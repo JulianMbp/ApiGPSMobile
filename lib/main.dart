@@ -20,11 +20,13 @@ class _MyAppState extends State<MyApp> {
   final String apiUrl = "http://10.0.2.2:8000/location/mobile/"; 
   String? _error;
   final int mascotaId = 6;
+  StreamSubscription<Position>? _positionStreamSubscription;
 
   @override
   void initState() {
     super.initState();
     _getLocation();
+    _startLocationUpdates();
     _startSendingLocation();
   }
 
@@ -52,9 +54,42 @@ class _MyAppState extends State<MyApp> {
     });
   }
 
+  Future<void> _startLocationUpdates() async {
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        return;
+      }
+    }
+
+    _positionStreamSubscription = Geolocator.getPositionStream(
+      locationSettings: LocationSettings(
+        accuracy: LocationAccuracy.best,       // Máxima precisión
+        distanceFilter: 5,                     // Actualiza cada 5 metros de movimiento
+      ),
+    ).listen(
+      (Position position) {
+        print("Nueva ubicación recibida: Lat: ${position.latitude}, Lng: ${position.longitude}");
+        setState(() {
+          _currentPosition = position;
+        });
+      },
+      onError: (error) {
+        print("Error en stream de ubicación: $error");
+        setState(() {
+          _error = error.toString();
+        });
+      },
+    );
+
+    // Verificar si el stream está activo
+    print("Stream de ubicación iniciado: ${_positionStreamSubscription != null}");
+  }
+
   void _startSendingLocation() {
     /*     _timer = Timer.periodic(Duration(seconds: 10), (Timer t) async { */
-    _timer = Timer.periodic(Duration(minutes: 1), (Timer t) async {
+    _timer = Timer.periodic(Duration(seconds: 10), (Timer t) async {
       if (_currentPosition != null) {
         await _sendLocation(_currentPosition!);
       }
@@ -98,6 +133,7 @@ class _MyAppState extends State<MyApp> {
   @override
   void dispose() {
     _timer?.cancel();
+    _positionStreamSubscription?.cancel();
     super.dispose();
   }
 
@@ -113,7 +149,21 @@ class _MyAppState extends State<MyApp> {
               if (_currentPosition == null)
                 Text("Obteniendo ubicación...")
               else
-                Text("Lat: ${_currentPosition!.latitude}, Lng: ${_currentPosition!.longitude}"),
+                Column(
+                  children: [
+                    Text(
+                      "Lat: ${_currentPosition!.latitude.toStringAsFixed(6)}\n"
+                      "Lng: ${_currentPosition!.longitude.toStringAsFixed(6)}\n"
+                      "Precisión: ${_currentPosition!.accuracy.toStringAsFixed(2)} metros",
+                      textAlign: TextAlign.center,
+                    ),
+                    SizedBox(height: 10),
+                    Text(
+                      "Última actualización: ${DateTime.now().toString()}",
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ],
+                ),
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.all(8.0),
