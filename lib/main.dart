@@ -19,12 +19,17 @@ class _MyAppState extends State<MyApp> {
   Timer? _timer;
   final String apiUrl = "http://10.0.2.2:8000/location/mobile/"; 
   String? _error;
-  final int mascotaId = 6;
+  int mascotaId = 6;
+  final TextEditingController _idController = TextEditingController();
   StreamSubscription<Position>? _positionStreamSubscription;
+  final String mascotaApiUrl = "http://10.0.2.2:8000/mascotas/mascotas_id/";
+  Map<String, dynamic>? mascotaInfo;
 
   @override
   void initState() {
     super.initState();
+    _idController.text = mascotaId.toString();
+    _getMascotaInfo();
     _getLocation();
     _startLocationUpdates();
     _startSendingLocation();
@@ -134,7 +139,44 @@ class _MyAppState extends State<MyApp> {
   void dispose() {
     _timer?.cancel();
     _positionStreamSubscription?.cancel();
+    _idController.dispose();
     super.dispose();
+  }
+
+  void _updateMascotaId() {
+    int? newId = int.tryParse(_idController.text);
+    if (newId != null) {
+      setState(() {
+        mascotaId = newId;
+      });
+      _getMascotaInfo();
+    } else {
+      setState(() {
+        _error = 'Por favor ingrese un ID válido';
+      });
+    }
+  }
+
+  Future<void> _getMascotaInfo() async {
+    try {
+      final response = await http.get(Uri.parse('$mascotaApiUrl$mascotaId'));
+      if (response.statusCode == 200) {
+        setState(() {
+          mascotaInfo = json.decode(response.body);
+          _error = null;
+        });
+      } else {
+        setState(() {
+          _error = 'Error al obtener información de la mascota';
+          mascotaInfo = null;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _error = 'Error de conexión: $e';
+        mascotaInfo = null;
+      });
+    }
   }
 
   @override
@@ -142,10 +184,39 @@ class _MyAppState extends State<MyApp> {
     return MaterialApp(
       home: Scaffold(
         appBar: AppBar(title: Text("GPS Sender")),
-        body: Center(
+        body: SingleChildScrollView(
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _idController,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: 'ID de la Mascota',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 10),
+                    ElevatedButton(
+                      onPressed: _updateMascotaId,
+                      child: Text('Actualizar'),
+                    ),
+                  ],
+                ),
+              ),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Text(
+                    _error!,
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
               if (_currentPosition == null)
                 Text("Obteniendo ubicación...")
               else
@@ -164,12 +235,65 @@ class _MyAppState extends State<MyApp> {
                     ),
                   ],
                 ),
-              if (_error != null)
+              if (mascotaInfo != null)
                 Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Text(
-                    "Error: $_error",
-                    style: TextStyle(color: Colors.red),
+                  padding: const EdgeInsets.all(16.0),
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (mascotaInfo!['imagen'] != null)
+                            Center(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8.0),
+                                child: Image.memory(
+                                  base64Decode(mascotaInfo!['imagen'].toString().split(',').last),
+                                  height: 200,
+                                  width: 200,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Container(
+                                      height: 200,
+                                      width: 200,
+                                      color: Colors.grey[300],
+                                      child: Icon(Icons.pets, size: 50, color: Colors.grey[600]),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                          SizedBox(height: 16),
+                          Text(
+                            'Información de la Mascota',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          SizedBox(height: 10),
+                          Text('Nombre: ${mascotaInfo!['nombre'] ?? 'No disponible'}'),
+                          Text('Especie: ${mascotaInfo!['especie'] ?? 'No disponible'}'),
+                          Text('Raza: ${mascotaInfo!['raza'] ?? 'No disponible'}'),
+                          Text('Edad: ${mascotaInfo!['edad']?.toString() ?? 'No disponible'} años'),
+                          Text('Peso: ${mascotaInfo!['peso'] ?? 'No disponible'} kg'),
+                          if (mascotaInfo!['dueño_info'] != null) ...[
+                            SizedBox(height: 16),
+                            Text(
+                              'Información del Dueño',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            SizedBox(height: 10),
+                            Text('Nombre: ${mascotaInfo!['dueño_info']['nombre'] ?? ''} ${mascotaInfo!['dueño_info']['apellido'] ?? ''}'),
+                            Text('Teléfono: ${mascotaInfo!['dueño_info']['telefono'] ?? 'No disponible'}'),
+                          ],
+                        ],
+                      ),
+                    ),
                   ),
                 ),
             ],
